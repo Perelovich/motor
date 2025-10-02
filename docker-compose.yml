@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: icars_bot
+    restart: unless-stopped
+    environment:
+      # --- CRITICAL: SET THESE VARIABLES ---
+      - TG_BOT_TOKEN=${TG_BOT_TOKEN}
+      - OPS_CHAT_ID=${OPS_CHAT_ID}
+      - ADMIN_TG_IDS=${ADMIN_TG_IDS}
+      # --- Database Connection ---
+      - DB_URL=jdbc:postgresql://db:5432/icars
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASS=${DB_PASS:-postgres}
+      # --- Optional ---
+      - BOT_USERNAME=ICarsPowertrainBot
+      - LOG_LEVEL=INFO
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - icars-net
+
+  db:
+    image: postgres:16-alpine
+    container_name: icars_db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=icars
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASS:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d icars"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - icars-net
+
+volumes:
+  postgres_data:
+
+networks:
+  icars-net:
+    driver: bridge
