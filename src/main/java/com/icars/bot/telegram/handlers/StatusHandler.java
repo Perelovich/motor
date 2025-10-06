@@ -44,7 +44,13 @@ public class StatusHandler {
         ask(chatId, messages.getString("status.ask_identifier"));
     }
 
-    public void handle(Update update) {
+    public void handle(Update update) {if (update.hasCallbackQuery()) {
+        logger.info("Wizard callback: data='{}', state='{}'",
+                update.getCallbackQuery().getData(),
+                userStates.getOrDefault(
+                        update.getCallbackQuery().getMessage().getChatId(), "n/a")
+        );
+    }
         if (!update.hasMessage() || !update.getMessage().hasText()) return;
         long chatId = update.getMessage().getChatId();
         String stateStr = userStates.getOrDefault(chatId, "");
@@ -54,11 +60,23 @@ public class StatusHandler {
         ResourceBundle messages = getMessages(update);
         Optional<Order> orderOpt;
 
-        if (identifier.toLowerCase().startsWith("ic-")) {
+        boolean looksLikeId = identifier.matches("(?i)^[A-Z]{2}-\\d{6}-\\d{3}$") || identifier.toLowerCase().startsWith("ic-");
+        if (looksLikeId) {
             orderOpt = orderService.findByPublicId(identifier.toUpperCase());
         } else {
-            String formattedPhone = PhoneUtil.formatE164(identifier);
+            String formattedPhone = com.icars.bot.util.PhoneUtil.formatE164(identifier);
+            if (formattedPhone == null || !com.icars.bot.service.ValidationService.isValidPhoneNumber(formattedPhone)) {
+                ask(chatId, messages.getString("validation.error.phone"));
+                userStates.remove(chatId);
+                return;
+            }
             orderOpt = orderService.findLastByPhone(formattedPhone);
+            if (orderOpt.isEmpty()) {
+                ask(chatId, messages.getString("status.not_found"));
+                userStates.remove(chatId);
+                return;
+            }
+
         }
 
         if (orderOpt.isPresent()) {
@@ -73,7 +91,7 @@ public class StatusHandler {
 
     private void sendStatusMessage(long chatId, Order order, List<TimelineEvent> timeline, ResourceBundle messages) {
         String title = MessageFormat.format(messages.getString("status.result.title"),
-                Markdown.escape(order.getPublicId()),
+                order.getPublicId(), // без MarkdownV2, просто строка
                 order.getStatus().name()
         );
 
@@ -82,9 +100,14 @@ public class StatusHandler {
         if (!timeline.isEmpty()) {
             sb.append("\n\n").append(messages.getString("status.result.timeline.title"));
             String timelineEvents = timeline.stream()
-                    .map(e -> MessageFormat.format(messages.getString("status.result.timeline.event"),
-                            e.getEventTimestamp(),
-                            Markdown.escape(e.getDescription())))
+                    .map(e -> {
+                        java.util.Date dt = e.getEventTimestamp() == null
+                                ? new java.util.Date()
+                                : java.util.Date.from(e.getEventTimestamp()); // <--- FIX
+                        return MessageFormat.format(messages.getString("status.result.timeline.event"),
+                                dt,
+                                e.getDescription() == null ? "-" : e.getDescription());
+                    })
                     .collect(Collectors.joining("\n"));
             sb.append("\n").append(timelineEvents);
         }
@@ -92,13 +115,14 @@ public class StatusHandler {
         SendMessage sm = new SendMessage();
         sm.setChatId(chatId);
         sm.setText(sb.toString());
-        sm.setParseMode("MarkdownV2");
+        // не ставим parseMode
         try {
             sender.execute(sm);
         } catch (TelegramApiException e) {
             logger.error("Failed to send status message for order {} to chat {}", order.getPublicId(), chatId, e);
         }
     }
+
 
     private void ask(long chatId, String text) {
         SendMessage message = new SendMessage();
@@ -114,6 +138,6 @@ public class StatusHandler {
     private ResourceBundle getMessages(Update update) {
         // Basic language selection, defaulting to Russian
         String lang = update.getMessage().getFrom().getLanguageCode() != null && update.getMessage().getFrom().getLanguageCode().startsWith("en") ? "en" : "ru";
-        return ResourceBundle.getBundle("i18n.messages", new java.util.Locale(lang));
+        return ResourceBundle.getBundle("i18n.messages", java.util.Locale.forLanguageTag(lang));
     }
 }

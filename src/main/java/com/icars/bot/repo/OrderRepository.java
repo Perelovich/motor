@@ -1,7 +1,6 @@
 package com.icars.bot.repo;
 
 import com.icars.bot.domain.Order;
-import com.icars.bot.domain.OrderCategory;
 import com.icars.bot.domain.OrderStatus;
 import org.jdbi.v3.sqlobject.config.RegisterBeanMapper;
 import org.jdbi.v3.sqlobject.customizer.Bind;
@@ -15,12 +14,29 @@ import java.util.Optional;
 
 public interface OrderRepository {
 
-    @SqlUpdate("INSERT INTO orders (public_id, telegram_user_id, telegram_chat_id, category, status, customer_name, customer_phone, delivery_city) " +
-            "VALUES (:publicId, :telegramUserId, :telegramChatId, :category, :status, :customerName, :customerPhone, :deliveryCity)")
+    @SqlUpdate("""
+        INSERT INTO orders (
+            public_id, telegram_user_id, telegram_chat_id, category, status, customer_name, customer_phone, delivery_city
+        ) VALUES (
+            :publicId,
+            :telegramUserId,
+            :telegramChatId,
+            CAST(:category AS order_category),
+            CAST(:status   AS order_status),
+            :customerName,
+            :customerPhone,
+            :deliveryCity
+        )
+        """)
     @GetGeneratedKeys("id")
     long insert(@BindBean Order order);
 
-    @SqlUpdate("UPDATE orders SET status = :status, updated_at = NOW() WHERE id = :id")
+    @SqlUpdate("""
+        UPDATE orders
+           SET status = CAST(:status AS order_status),
+               updated_at = NOW()
+         WHERE id = :id
+        """)
     void updateStatus(@Bind("id") long orderId, @Bind("status") OrderStatus status);
 
     @SqlQuery("SELECT * FROM orders WHERE id = :id")
@@ -42,9 +58,15 @@ public interface OrderRepository {
     @RegisterBeanMapper(Order.class)
     List<Order> findLast(@Bind("limit") int limit);
 
-    @SqlQuery("SELECT o.* FROM orders o LEFT JOIN engine_attributes ea ON o.id = ea.order_id " +
-            "WHERE o.public_id ILIKE :query OR o.customer_phone ILIKE :query OR ea.vin ILIKE :query " +
-            "ORDER BY o.created_at DESC")
+    @SqlQuery("""
+        SELECT o.*
+          FROM orders o
+          LEFT JOIN engine_attributes ea ON o.id = ea.order_id
+         WHERE o.public_id ILIKE :query
+            OR o.customer_phone ILIKE :query
+            OR ea.vin ILIKE :query
+         ORDER BY o.created_at DESC
+        """)
     @RegisterBeanMapper(Order.class)
     List<Order> search(@Bind("query") String query);
 }

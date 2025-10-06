@@ -140,6 +140,6 @@ public class AdminHandler {
 
     private ResourceBundle getMessages(Update update) {
         String lang = update.getMessage().getFrom().getLanguageCode() != null && update.getMessage().getFrom().getLanguageCode().startsWith("en") ? "en" : "ru";
-        return ResourceBundle.getBundle("i18n.messages", new java.util.Locale(lang));
+        return ResourceBundle.getBundle("i18n.messages", java.util.Locale.forLanguageTag(lang));
     }
 }

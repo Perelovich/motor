@@ -2,9 +2,11 @@ package com.icars.bot;
 
 import com.icars.bot.config.BotConfig;
 import com.icars.bot.config.DatabaseConfig;
+import com.icars.bot.service.NotificationService;
 import com.icars.bot.telegram.ICarsBot;
 import org.flywaydb.core.Flyway;
 import org.jdbi.v3.core.Jdbi;
+import org.jdbi.v3.sqlobject.SqlObjectPlugin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
@@ -17,34 +19,39 @@ public class App {
     private static final Logger logger = LoggerFactory.getLogger(App.class);
 
     public static void main(String[] args) {
+
         logger.info("Starting ICars Powertrain Bot...");
 
         try {
-            // 1. Load Configuration
+            // 1) Конфиг
             BotConfig botConfig = new BotConfig();
+
             DatabaseConfig dbConfig = new DatabaseConfig();
             logger.info("Configuration loaded successfully.");
 
-            // 2. Initialize Database Connection Pool
+            // 2) Пул коннектов
             DataSource dataSource = dbConfig.getDataSource();
             logger.info("Database connection pool initialized.");
 
-            // 3. Run Flyway Migrations
+            // 3) Миграции
             runMigrations(dataSource);
             logger.info("Database migrations executed successfully.");
 
-            // 4. Initialize Jdbi
+            // 4) Jdbi + плагины
             Jdbi jdbi = Jdbi.create(dataSource);
+            jdbi.installPlugin(new SqlObjectPlugin()); // ВАЖНО: включает attach() для @SqlQuery/@SqlUpdate
+            // sanity-check: убедимся, что Jdbi живой
+            jdbi.useHandle(h -> h.createQuery("select 1").mapTo(int.class).one());
             logger.info("JDBI instance created.");
 
-            // 5. Initialize and Register Telegram Bot
+            // 5) Telegram bot
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
             ICarsBot bot = new ICarsBot(botConfig, jdbi);
             botsApi.registerBot(bot);
-
+            new NotificationService(bot, botConfig).notifyOpsPing();
             logger.info("ICars Powertrain Bot is now running.");
 
-            // Add shutdown hook for graceful exit
+            // 6) Shutdown hook
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 logger.info("Shutting down ICars Powertrain Bot...");
                 dbConfig.closeDataSource();

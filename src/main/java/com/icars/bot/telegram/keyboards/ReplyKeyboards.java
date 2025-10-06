@@ -6,6 +6,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.Keyboard
 
 import java.util.List;
 import java.util.ResourceBundle;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardRemove;
 
 public class ReplyKeyboards {
 
@@ -41,5 +42,9 @@ public class ReplyKeyboards {
 
         keyboardMarkup.setKeyboard(List.of(row));
         return keyboardMarkup;
+    }
+
+    public static ReplyKeyboardRemove hide() {
+        return new ReplyKeyboardRemove(true);
     }
 }

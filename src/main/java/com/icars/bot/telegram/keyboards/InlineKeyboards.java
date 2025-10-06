@@ -9,11 +9,11 @@ import java.util.ResourceBundle;
 public class InlineKeyboards {
 
     public static InlineKeyboardMarkup skip(ResourceBundle messages) {
-        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        InlineKeyboardButton button = new InlineKeyboardButton(messages.getString("wizard.engine.skip"));
-        button.setCallbackData("skip");
-        markup.setKeyboard(List.of(List.of(button)));
-        return markup;
+        InlineKeyboardButton b = new InlineKeyboardButton(messages.getString("wizard.engine.skip"));
+        b.setCallbackData("skip");
+        InlineKeyboardMarkup kb = new InlineKeyboardMarkup();
+        kb.setKeyboard(List.of(List.of(b)));
+        return kb;
     }
 
     public static InlineKeyboardMarkup confirm(ResourceBundle messages) {
