@@ -1,11 +1,11 @@
 services:
-  db:
-    image: postgres:16
+ db:
+    image: postgres:15
     container_name: icars_db
     environment:
+      POSTGRES_DB: icars
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: icars
     ports:
       - "5432:5432"
     volumes:
