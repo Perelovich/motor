@@ -68,4 +68,20 @@ public class InlineKeyboards {
         ));
         return markup;
     }
+    public static InlineKeyboardMarkup backToMenu(ResourceBundle rb) {
+    org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup kb =
+            new org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup();
+
+    org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton btn =
+            new org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton(
+                    rb.getString("menu.back") // добавь ключ в i18n, напр. "Вернуться в меню"
+            );
+    btn.setCallbackData("menu:back");
+
+    java.util.List<org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton> row =
+            java.util.List.of(btn);
+    kb.setKeyboard(java.util.List.of(row));
+    return kb;
+}
+
 }
