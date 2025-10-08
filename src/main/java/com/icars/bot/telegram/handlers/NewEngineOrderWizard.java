@@ -24,6 +24,7 @@ import org.telegram.telegrambots.meta.bots.AbsSender;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.text.MessageFormat;
+import java.time.Year;
 import java.util.Map;
 import java.util.ResourceBundle;
 import java.util.concurrent.ConcurrentHashMap;
@@ -57,40 +58,47 @@ public class NewEngineOrderWizard {
         this.notificationService = new NotificationService(sender, config);
     }
 
+    /* ======================== i18n ======================== */
     private ResourceBundle getMessages(Update update) {
-        // Basic language selection, defaulting to Russian
         String lang = "ru";
         User user = update.hasCallbackQuery() ? update.getCallbackQuery().getFrom() : update.getMessage().getFrom();
-        if (user.getLanguageCode() != null && user.getLanguageCode().startsWith("en")) {
+        if (user != null && user.getLanguageCode() != null && user.getLanguageCode().startsWith("en")) {
             lang = "en";
         }
         return ResourceBundle.getBundle("i18n.messages", java.util.Locale.forLanguageTag(lang));
     }
 
+    /* ======================== ENTRY ======================== */
     public void startWizard(Update update) {
         long chatId = update.getMessage().getChatId();
         long userId = update.getMessage().getFrom().getId();
 
-        ordersInProgress.put(chatId, new Order(null, null, userId, chatId, OrderCategory.ENGINE, OrderStatus.NEW, null, null, null, null, null));
+        ordersInProgress.put(chatId, new Order(
+                null, null, userId, chatId,
+                OrderCategory.ENGINE, OrderStatus.NEW,
+                null, null, null, null, null
+        ));
         attributesInProgress.put(chatId, new EngineAttributes());
 
         userStates.put(chatId, "WIZARD_ENGINE_" + State.ASK_VIN);
 
         ResourceBundle msg = getMessages(update);
 
-        // 1) Спрячем reply-клавиатуру отдельным сообщением
-        SendMessage hide = new SendMessage();
-        hide.setChatId(chatId);
-        hide.setText(" "); // нейтральная заглушка, можно поставить пробел или убрать текст
+        // 1) Скрываем reply-клавиатуру отдельным сообщением
+        SendMessage hide = new SendMessage(String.valueOf(chatId), " ");
         hide.setReplyMarkup(ReplyKeyboards.hide());
         try { sender.execute(hide); } catch (TelegramApiException ignored) {}
 
-        // 2) Задаём вопрос с ИНЛАЙН «Пропустить»
+        // 2) Первый вопрос с инлайн «Пропустить»
         askInline(chatId, msg.getString("wizard.engine.ask_vin"), InlineKeyboards.skip(msg));
     }
 
+    /* ======================== FSM ======================== */
     public void handle(Update update) {
-        long chatId = update.hasCallbackQuery() ? update.getCallbackQuery().getMessage().getChatId() : update.getMessage().getChatId();
+        long chatId = update.hasCallbackQuery()
+                ? update.getCallbackQuery().getMessage().getChatId()
+                : update.getMessage().getChatId();
+
         String stateStr = userStates.getOrDefault(chatId, "");
         if (!stateStr.startsWith("WIZARD_ENGINE_")) return;
 
@@ -99,17 +107,18 @@ public class NewEngineOrderWizard {
 
         try {
             switch (currentState) {
-                case ASK_VIN: processVin(update, messages); break;
-                case ASK_MAKE: processMake(update, messages); break;
-                case ASK_MODEL: processModel(update, messages); break;
-                case ASK_YEAR: processYear(update, messages); break;
-                case ASK_ENGINE_CODE: processEngineCode(update, messages); break;
-                case ASK_FUEL_TURBO: processFuelTurbo(update, messages); break;
-                case ASK_INJECTION_EURO: processInjectionEuro(update, messages); break;
-                case ASK_KIT: processKit(update, messages); break;
-                case ASK_CITY: processCity(update, messages); break;
-                case ASK_CONTACT: processContact(update, messages); break;
-                case PREVIEW: processPreview(update, messages); break;
+                case ASK_VIN -> processVin(update, messages);
+                case ASK_MAKE -> processMake(update, messages);
+                case ASK_MODEL -> processModel(update, messages);
+                case ASK_YEAR -> processYear(update, messages);
+                case ASK_ENGINE_CODE -> processEngineCode(update, messages);
+                case ASK_FUEL_TURBO -> processFuelTurbo(update, messages);
+                case ASK_INJECTION_EURO -> processInjectionEuro(update, messages);
+                case ASK_KIT -> processKit(update, messages);
+                case ASK_CITY -> processCity(update, messages);
+                case ASK_CONTACT -> processContact(update, messages);
+                case PREVIEW -> processPreview(update, messages);
+                default -> sendError(chatId, messages);
             }
         } catch (Exception e) {
             logger.error("Error in wizard state {}: {}", currentState, e.getMessage(), e);
@@ -117,15 +126,18 @@ public class NewEngineOrderWizard {
         }
     }
 
+    /* ======================== STATES ======================== */
+
     private void processVin(Update update, ResourceBundle messages) {
         if (update.hasCallbackQuery() && "skip".equals(update.getCallbackQuery().getData())) {
             long chatId = update.getCallbackQuery().getMessage().getChatId();
             attributesInProgress.get(chatId).setVin("-");
             userStates.put(chatId, "WIZARD_ENGINE_" + State.ASK_MAKE);
             editMessageInline(chatId, update.getCallbackQuery().getMessage().getMessageId(),
-                    messages.getString("wizard.engine.ask_make"),
-                    null /* тут нет инлайна, просто редактируем */);
-        } else if (update.hasMessage() && update.getMessage().hasText()) {
+                    messages.getString("wizard.engine.ask_make"), null);
+            return;
+        }
+        if (update.hasMessage() && update.getMessage().hasText()) {
             long chatId = update.getMessage().getChatId();
             String vin = update.getMessage().getText().trim().toUpperCase();
             if (ValidationService.isValidVin(vin)) {
@@ -138,8 +150,8 @@ public class NewEngineOrderWizard {
         }
     }
 
-    // Implement other process... methods similarly
     private void processMake(Update update, ResourceBundle messages) {
+        if (!update.hasMessage() || !update.getMessage().hasText()) return;
         long chatId = update.getMessage().getChatId();
         String make = update.getMessage().getText().trim();
         attributesInProgress.get(chatId).setMake(make);
@@ -148,6 +160,7 @@ public class NewEngineOrderWizard {
     }
 
     private void processModel(Update update, ResourceBundle messages) {
+        if (!update.hasMessage() || !update.getMessage().hasText()) return;
         long chatId = update.getMessage().getChatId();
         String model = update.getMessage().getText().trim();
         attributesInProgress.get(chatId).setModel(model);
@@ -156,6 +169,7 @@ public class NewEngineOrderWizard {
     }
 
     private void processYear(Update update, ResourceBundle messages) {
+        if (!update.hasMessage() || !update.getMessage().hasText()) return;
         long chatId = update.getMessage().getChatId();
         String yearStr = update.getMessage().getText().trim();
         if (ValidationService.isValidYear(yearStr)) {
@@ -163,7 +177,10 @@ public class NewEngineOrderWizard {
             userStates.put(chatId, "WIZARD_ENGINE_" + State.ASK_ENGINE_CODE);
             askInline(chatId, messages.getString("wizard.engine.ask_engine_code"), InlineKeyboards.skip(messages));
         } else {
-            String errorMessage = MessageFormat.format(messages.getString("validation.error.year"), java.time.Year.now().getValue() + 1);
+            String errorMessage = MessageFormat.format(
+                    messages.getString("validation.error.year"),
+                    Year.now().getValue() + 1
+            );
             ask(chatId, errorMessage, null);
         }
     }
@@ -177,6 +194,7 @@ public class NewEngineOrderWizard {
                 attributesInProgress.get(chatId).setEngineCodeOrDetails(null);
             }
         } else {
+            if (!update.hasMessage()) return;
             chatId = update.getMessage().getChatId();
             String text = update.getMessage().getText();
             attributesInProgress.get(chatId).setEngineCodeOrDetails(text == null ? null : text.trim());
@@ -184,7 +202,6 @@ public class NewEngineOrderWizard {
         userStates.put(chatId, "WIZARD_ENGINE_" + State.ASK_FUEL_TURBO);
         askInline(chatId, messages.getString("wizard.engine.ask_fuel_turbo"), InlineKeyboards.fuelTurbo(messages));
     }
-
 
     private void processFuelTurbo(Update update, ResourceBundle messages) {
         if (!update.hasCallbackQuery()) return;
@@ -195,15 +212,12 @@ public class NewEngineOrderWizard {
         if (attrs == null) { sendError(chatId, messages); return; }
 
         if ("skip".equals(data)) {
-            // Пользователь не знает/пропустил — ставим дефолты
             attrs.setFuelType("-");
             attrs.setIsTurbo(false);
         } else {
             String[] parts = data.split("_");
-            // защита от кривых callback'ов
             if (parts.length < 2) {
                 logger.warn("Unexpected callback data at ASK_FUEL_TURBO: {}", data);
-                // можно повторно спросить этот же шаг
                 editMessageInline(chatId, update.getCallbackQuery().getMessage().getMessageId(),
                         messages.getString("wizard.engine.ask_fuel_turbo"),
                         InlineKeyboards.fuelTurbo(messages));
@@ -218,7 +232,7 @@ public class NewEngineOrderWizard {
                 chatId,
                 update.getCallbackQuery().getMessage().getMessageId(),
                 messages.getString("wizard.engine.ask_injection_euro"),
-                InlineKeyboards.injectionEuro(messages)  // здесь инлайн-клавиатура для следующего шага
+                InlineKeyboards.injectionEuro(messages)
         );
     }
 
@@ -249,10 +263,9 @@ public class NewEngineOrderWizard {
                 chatId,
                 update.getCallbackQuery().getMessage().getMessageId(),
                 messages.getString("wizard.engine.ask_kit"),
-                InlineKeyboards.skip(messages) // на этом шаге тоже разрешаем "Пропустить"
+                InlineKeyboards.skip(messages)
         );
     }
-
 
     private void processKit(Update update, ResourceBundle messages) {
         long chatId;
@@ -263,6 +276,7 @@ public class NewEngineOrderWizard {
                 attributesInProgress.get(chatId).setKitDetails(null);
             }
         } else {
+            if (!update.hasMessage()) return;
             chatId = update.getMessage().getChatId();
             String text = update.getMessage().getText();
             attributesInProgress.get(chatId).setKitDetails(text == null ? null : text.trim());
@@ -271,7 +285,6 @@ public class NewEngineOrderWizard {
         userStates.put(chatId, "WIZARD_ENGINE_" + State.ASK_CITY);
         askInline(chatId, messages.getString("wizard.engine.ask_city"), InlineKeyboards.skip(messages));
     }
-
 
     private void processCity(Update update, ResourceBundle messages) {
         long chatId;
@@ -282,20 +295,16 @@ public class NewEngineOrderWizard {
                 ordersInProgress.get(chatId).setDeliveryCity("-");
             }
         } else {
+            if (!update.hasMessage()) return;
             chatId = update.getMessage().getChatId();
             String text = update.getMessage().getText();
             ordersInProgress.get(chatId).setDeliveryCity(text == null ? "-" : text.trim());
         }
 
-   userStates.put(chatId, "WIZARD_ENGINE_" + State.ASK_CONTACT);
-ask(chatId, messages.getString("wizard.engine.ask_contact"),
-    ReplyKeyboards.requestContact(messages));
-
-
+        userStates.put(chatId, "WIZARD_ENGINE_" + State.ASK_CONTACT);
+        // одно сообщение: текст + REPLY "Отправить контакт"
+        ask(chatId, messages.getString("wizard.engine.ask_contact"), ReplyKeyboards.requestContact(messages));
     }
-
-
-
 
     private void processContact(Update update, ResourceBundle messages) {
         if (!update.hasMessage()) return;
@@ -340,7 +349,6 @@ ask(chatId, messages.getString("wizard.engine.ask_contact"),
                 String e164 = com.icars.bot.util.PhoneUtil.formatE164(ph);
                 if (e164 == null || !ValidationService.isValidPhoneNumber(e164)) {
                     ask(chatId, messages.getString("validation.error.phone"), ReplyKeyboards.requestContact(messages));
-
                     return;
                 }
                 phone = e164;
@@ -348,7 +356,6 @@ ask(chatId, messages.getString("wizard.engine.ask_contact"),
                 String e164 = com.icars.bot.util.PhoneUtil.formatE164(text);
                 if (e164 == null || !ValidationService.isValidPhoneNumber(e164)) {
                     ask(chatId, messages.getString("validation.error.phone"), ReplyKeyboards.requestContact(messages));
-
                     return;
                 }
                 phone = e164;
@@ -363,7 +370,6 @@ ask(chatId, messages.getString("wizard.engine.ask_contact"),
         }
         if (phone == null || !ValidationService.isValidPhoneNumber(phone)) {
             ask(chatId, messages.getString("validation.error.phone"), ReplyKeyboards.requestContact(messages));
-
             return;
         }
 
@@ -373,7 +379,6 @@ ask(chatId, messages.getString("wizard.engine.ask_contact"),
         userStates.put(chatId, "WIZARD_ENGINE_" + State.PREVIEW);
         showPreview(chatId, messages);
     }
-
 
     private void processPreview(Update update, ResourceBundle messages) {
         if (!update.hasCallbackQuery()) return;
@@ -394,19 +399,16 @@ ask(chatId, messages.getString("wizard.engine.ask_contact"),
                 ordersInProgress.remove(chatId);
                 attributesInProgress.remove(chatId);
 
-// 2) Закрываем старое сообщение (plain)
+                // 2) Закрываем превью и говорим спасибо (plain)
                 editMessagePlain(chatId, messageId,
-                        "Спасибо! Ваша заявка принята за номером " + publicId + ". Мы свяжемся с вами в ближайшее время.");
-// Скрыть reply-клавиатуру и поблагодарить
-SendMessage done = new SendMessage();
-done.setChatId(chatId);
-done.setText(messages.getString("wizard.engine.done.thanks")); // добавь ключ в i18n
-done.setReplyMarkup(ReplyKeyboards.hide()); // отправит ReplyKeyboardRemove
-try { sender.execute(done); } catch (TelegramApiException ignored) {}
+                        messages.getString("wizard.engine.done.thanks"));
 
-// 3) Новое сообщение с главным меню — ТЕПЕРЬ не welcome, а наш пост-заявочный текст
-               askPlain(chatId, buildPostSubmitMessage(publicId));
-
+                // 3) Новое сообщение с пост-текстом + инлайн “Вернуться в меню”
+                SendMessage m = new SendMessage();
+                m.setChatId(chatId);
+                m.setText(buildPostSubmitMessage(publicId));
+                m.setReplyMarkup(InlineKeyboards.backToMenu(messages)); // <— см. добавление в InlineKeyboards
+                sender.execute(m);
 
                 // 4) Уведомляем OPS
                 Order fullOrder = orderService.findByPublicId(publicId).orElseThrow();
@@ -415,22 +417,23 @@ try { sender.execute(done); } catch (TelegramApiException ignored) {}
             } catch (Exception e) {
                 logger.error("Failed to save order for chat {}", chatId, e);
                 editMessagePlain(chatId, messageId, messages.getString("validation.error.general"));
+                // показываем обычное меню
                 sendMenuAfterFlow(chatId, messages.getString("welcome"), messages);
             }
 
         } else if ("cancel".equals(data)) {
-            // 1) Чистим состояние
             userStates.remove(chatId);
             ordersInProgress.remove(chatId);
             attributesInProgress.remove(chatId);
 
             editMessagePlain(chatId, messageId, messages.getString("wizard.engine.cancelled"));
             sendMenuAfterFlow(chatId,
-                    "Ок, отменил. Вы можете начать заново в любое время или проверить статус существующих заявок через «Проверить статус».",
+                    messages.getString("wizard.engine.cancelled.next"),
                     messages);
         }
     }
 
+    /* ======================== VIEW helpers ======================== */
 
     private void showPreview(long chatId, ResourceBundle messages) {
         Order order = ordersInProgress.get(chatId);
@@ -449,14 +452,7 @@ try { sender.execute(done); } catch (TelegramApiException ignored) {}
 
         String previewBody = MessageFormat.format(
                 messages.getString("wizard.engine.preview.body"),
-                make, model, year,
-                engine,
-                fuel,
-                vin,
-                kit,
-                city,
-                cname,
-                cphone
+                make, model, year, engine, fuel, vin, kit, city, cname, cphone
         );
 
         SendMessage sm = new SendMessage();
@@ -464,9 +460,8 @@ try { sender.execute(done); } catch (TelegramApiException ignored) {}
         sm.setText(messages.getString("wizard.engine.preview.title") + previewBody);
         sm.setParseMode("MarkdownV2");
         sm.setReplyMarkup(InlineKeyboards.confirm(messages));
-        try {
-            sender.execute(sm);
-        } catch (TelegramApiException e) {
+        try { sender.execute(sm); }
+        catch (TelegramApiException e) {
             logger.error("Failed to send preview message to chat {}", chatId, e);
             askInline(chatId, messages.getString("validation.error.general"), null);
         }
@@ -481,34 +476,27 @@ try { sender.execute(done); } catch (TelegramApiException ignored) {}
         if (keyboard != null) {
             message.setReplyMarkup(keyboard);
         }
-        try {
-            sender.execute(message);
-        } catch (TelegramApiException e) {
-            logger.error("Failed to send wizard message to chat {}", chatId, e);
-        }
+        try { sender.execute(message); }
+        catch (TelegramApiException e) { logger.error("Failed to send wizard message to chat {}", chatId, e); }
     }
-    // ПЛЕЙН текст БЕЗ parseMode и БЕЗ клавиатуры
+
     private void askPlain(long chatId, String text) {
         SendMessage m = new SendMessage();
         m.setChatId(chatId);
         m.setText(text);
-        try { sender.execute(m); } catch (TelegramApiException e) {
-            logger.error("Failed to send plain message to chat {}", chatId, e);
-        }
+        try { sender.execute(m); }
+        catch (TelegramApiException e) { logger.error("Failed to send plain message to chat {}", chatId, e); }
     }
 
-    // ПЛЕЙН текст + ИНЛАЙН-КЛАВИАТУРА
     private void askInline(long chatId, String text, InlineKeyboardMarkup inlineKb) {
         SendMessage m = new SendMessage();
         m.setChatId(chatId);
         m.setText(text);
         if (inlineKb != null) m.setReplyMarkup(inlineKb);
-        try { sender.execute(m); } catch (TelegramApiException e) {
-            logger.error("Failed to send inline message to chat {}", chatId, e);
-        }
+        try { sender.execute(m); }
+        catch (TelegramApiException e) { logger.error("Failed to send inline message to chat {}", chatId, e); }
     }
 
-    // PLAIN: без MarkdownV2
     private void editMessagePlain(long chatId, int messageId, String text,
                                   org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup keyboard) {
         EditMessageText msg = new EditMessageText();
@@ -516,86 +504,38 @@ try { sender.execute(done); } catch (TelegramApiException ignored) {}
         msg.setMessageId(messageId);
         msg.setText(text); // без parseMode!
         if (keyboard != null) msg.setReplyMarkup(keyboard);
-        try {
-            sender.execute(msg);
-        } catch (TelegramApiException e) {
-            logger.error("Failed to edit message {} in chat {}", messageId, chatId, e);
-        }
+        try { sender.execute(msg); }
+        catch (TelegramApiException e) { logger.error("Failed to edit message {} in chat {}", messageId, chatId, e); }
     }
 
     private void editMessagePlain(long chatId, int messageId, String text) {
         editMessagePlain(chatId, messageId, text, null);
     }
-    // Редактирование сообщения + ИНЛАЙН-клавиатура (без Markdown)
+
     private void editMessageInline(long chatId, int messageId, String text,
                                    InlineKeyboardMarkup keyboard) {
         EditMessageText msg = new EditMessageText();
         msg.setChatId(chatId);
         msg.setMessageId(messageId);
-        msg.setText(text);                 // без parseMode
+        msg.setText(text);
         if (keyboard != null) msg.setReplyMarkup(keyboard);
-        try {
-            sender.execute(msg);
-        } catch (TelegramApiException e) {
-            logger.error("Failed to edit inline message {} in chat {}", messageId, chatId, e);
-        }
+        try { sender.execute(msg); }
+        catch (TelegramApiException e) { logger.error("Failed to edit inline message {} in chat {}", messageId, chatId, e); }
     }
+
     private void editMessageInline(long chatId, int messageId, String text) {
         editMessageInline(chatId, messageId, text, null);
     }
 
-    // MARKDOWNV2: когда в тексте есть *жирный*, `код` и т.п.
-// все пользовательские подстановки ОБЯЗАТЕЛЬНО экранируем!
-    private void editMessageMd(long chatId, int messageId, String text,
-                               org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup keyboard) {
-        EditMessageText msg = new EditMessageText();
-        msg.setChatId(chatId);
-        msg.setMessageId(messageId);
-        msg.setText(text);
-        msg.setParseMode("MarkdownV2");
-        if (keyboard != null) msg.setReplyMarkup(keyboard);
-        try {
-            sender.execute(msg);
-        } catch (TelegramApiException e) {
-            logger.error("Failed to edit MD message {} in chat {}", messageId, chatId, e);
-        }
-    }
-
-    private void editMessageMd(long chatId, int messageId, String text) {
-        editMessageMd(chatId, messageId, text, null);
-    }
-
-
-    private void sendError(long chatId, ResourceBundle messages) {
-        askInline(chatId, messages.getString("validation.error.general"), null);
-        userStates.remove(chatId);
-        ordersInProgress.remove(chatId);
-        attributesInProgress.remove(chatId);
-    }
-
-    // Отправка нового сообщения + главное меню (reply-клава)
-    private void sendWithMenu(long chatId, String text, ResourceBundle messages) {
-        SendMessage sm = new SendMessage();
-        sm.setChatId(chatId);
-        sm.setText(text);
-        sm.setReplyMarkup(ReplyKeyboards.mainMenu(messages)); // главное меню
-        try {
-            sender.execute(sm);
-        } catch (TelegramApiException e) {
-            logger.error("Failed to send menu message to chat {}", chatId, e);
-        }
-    }
     private void sendMenuAfterFlow(long chatId, String text, ResourceBundle messages) {
         SendMessage sm = new SendMessage();
         sm.setChatId(chatId);
         sm.setText(text);
-        sm.setReplyMarkup(ReplyKeyboards.mainMenu(messages)); // главное меню
-        try {
-            sender.execute(sm);
-        } catch (TelegramApiException e) {
-            logger.error("Failed to send menu message to chat {}", chatId, e);
-        }
+        sm.setReplyMarkup(ReplyKeyboards.mainMenu(messages));
+        try { sender.execute(sm); }
+        catch (TelegramApiException e) { logger.error("Failed to send menu message to chat {}", chatId, e); }
     }
+
     private String buildPostSubmitMessage(String publicId) {
         return "✅ Заявка отправлена!\n\n" +
                 "Номер: " + publicId + "\n" +
@@ -609,4 +549,10 @@ try { sender.execute(done); } catch (TelegramApiException ignored) {}
                 "— Двигатели: iCars Engine — t.me/icarsengine";
     }
 
+    private void sendError(long chatId, ResourceBundle messages) {
+        askInline(chatId, messages.getString("validation.error.general"), null);
+        userStates.remove(chatId);
+        ordersInProgress.remove(chatId);
+        attributesInProgress.remove(chatId);
+    }
 }
