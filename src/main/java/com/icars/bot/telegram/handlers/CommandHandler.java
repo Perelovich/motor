@@ -63,6 +63,17 @@ public class CommandHandler {
         }
     }
 
+    public java.util.ResourceBundle getMessages(org.telegram.telegrambots.meta.api.objects.Update update) {
+    String lang = "ru";
+    var user = update.hasCallbackQuery()
+            ? update.getCallbackQuery().getFrom()
+            : (update.getMessage() != null ? update.getMessage().getFrom() : null);
+    if (user != null && user.getLanguageCode() != null && user.getLanguageCode().startsWith("en")) {
+        lang = "en";
+    }
+    return java.util.ResourceBundle.getBundle("i18n.messages", java.util.Locale.forLanguageTag(lang));
+}
+
     public void handleFaq(Update update) {
         long chatId = update.getMessage().getChatId();
 
