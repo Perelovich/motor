@@ -10,6 +10,7 @@ import org.jdbi.v3.core.Jdbi;
 import org.telegram.telegrambots.meta.api.objects.Update;
 
 import java.util.Map;
+import java.util.ResourceBundle;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class UpdateRouter {
@@ -17,6 +18,8 @@ public class UpdateRouter {
     private final NewEngineOrderWizard newEngineOrderWizard;
     private final StatusHandler statusHandler;
     private final AdminHandler adminHandler;
+
+    // chatId -> FSM state
     private final Map<Long, String> userStates = new ConcurrentHashMap<>();
 
     public UpdateRouter(ICarsBot bot, Jdbi jdbi, BotConfig config) {
@@ -27,33 +30,41 @@ public class UpdateRouter {
     }
 
     public void handle(Update update) {
-        // 1) Игнорим канал-посты и всё, где нет message/колбэка
         if (update == null) return;
         if (!(update.hasMessage() || update.hasCallbackQuery())) return;
         if (update.hasChannelPost()) return;
 
-        Long chatId = update.hasCallbackQuery()
-                ? update.getCallbackQuery().getMessage().getChatId()
-                : update.getMessage().getChatId();
+        Long chatId = extractChatId(update);
+        if (chatId == null) return;
 
         String currentState = userStates.getOrDefault(chatId, "START");
 
-        // 2) Команды
+        // --- Глобальные callback-и (работают в любом состоянии)
+        if (update.hasCallbackQuery()) {
+            String data = String.valueOf(update.getCallbackQuery().getData());
+            if ("menu:back".equals(data)) {
+                userStates.remove(chatId);
+                commandHandler.handleStart(update); // покажет главное меню (reply-клава)
+                return;
+            }
+        }
+
+        // --- Команды
         if (update.hasMessage() && update.getMessage().isCommand()) {
             String command = update.getMessage().getText().split(" ")[0];
-            userStates.remove(chatId); // сбрасываем состояние
+            userStates.remove(chatId);
             switch (command) {
                 case "/start":
-                    commandHandler.handleStart(update); // покажет главное меню
+                    commandHandler.handleStart(update);
                     break;
                 case "/engine":
-                    newEngineOrderWizard.startWizard(update); // старт мастера
+                    newEngineOrderWizard.startWizard(update);
                     break;
                 case "/status":
                     statusHandler.start(update);
                     break;
                 case "/faq":
-                    commandHandler.handleFaq(update); // добавим ниже
+                    commandHandler.handleFaq(update);
                     break;
                 case "/admin":
                     adminHandler.handle(update);
@@ -64,7 +75,7 @@ public class UpdateRouter {
             return;
         }
 
-        // 3) FSM
+        // --- FSM (мастеры)
         if (currentState.startsWith("WIZARD_ENGINE_")) {
             newEngineOrderWizard.handle(update);
             return;
@@ -74,22 +85,33 @@ public class UpdateRouter {
             return;
         }
 
-        // 4) Нажатия кнопок главного меню (текстовые)
+        // --- Нажатия кнопок главного меню (REPLY-кнопки с текстом)
         if (update.hasMessage() && update.getMessage().hasText()) {
-            String text = update.getMessage().getText();
-            if (text.contains("Заказать двигатель") || text.contains("Order an engine")) {
+            ResourceBundle rb = commandHandler.getMessages(update);
+            final String BTN_ENGINE = rb.getString("menu.order_engine");
+            final String BTN_STATUS = rb.getString("menu.check_status");
+            final String BTN_FAQ    = rb.getString("menu.faq");
+
+            String text = update.getMessage().getText().trim();
+            if (text.equals(BTN_ENGINE)) {
                 newEngineOrderWizard.startWizard(update);
-            } else if (text.contains("Проверить статус") || text.contains("Check order status")) {
-                statusHandler.start(update);
-            } else if (text.contains("FAQ") || text.contains("Частые вопросы")) {
-                commandHandler.handleFaq(update);
-            } else {
-                commandHandler.handleStart(update);
+                return;
             }
+            if (text.equals(BTN_STATUS)) {
+                statusHandler.start(update);
+                return;
+            }
+            if (text.equals(BTN_FAQ)) {
+                commandHandler.handleFaq(update);
+                return;
+            }
+
+            // дефолт — показать меню
+            commandHandler.handleStart(update);
         }
     }
 
-    /** Достаём chatId из разных типов апдейтов безопасно */
+    /** Безопасное извлечение chatId из любого типа апдейта */
     private Long extractChatId(Update u) {
         if (u.hasMessage() && u.getMessage() != null) {
             return u.getMessage().getChatId();
@@ -100,7 +122,6 @@ public class UpdateRouter {
         if (u.hasMyChatMember() && u.getMyChatMember().getChat() != null) {
             return u.getMyChatMember().getChat().getId();
         }
-        // channelPost мы игнорим выше, но на всякий:
         if (u.hasChannelPost() && u.getChannelPost() != null) {
             return u.getChannelPost().getChatId();
         }
