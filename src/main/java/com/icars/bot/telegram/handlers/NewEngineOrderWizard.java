@@ -81,7 +81,7 @@ public class NewEngineOrderWizard {
         // 1) Спрячем reply-клавиатуру отдельным сообщением
         SendMessage hide = new SendMessage();
         hide.setChatId(chatId);
-        hide.setText(""); // нейтральная заглушка, можно поставить пробел или убрать текст
+        hide.setText(" "); // нейтральная заглушка, можно поставить пробел или убрать текст
         hide.setReplyMarkup(ReplyKeyboards.hide());
         try { sender.execute(hide); } catch (TelegramApiException ignored) {}
 
@@ -287,11 +287,11 @@ public class NewEngineOrderWizard {
             ordersInProgress.get(chatId).setDeliveryCity(text == null ? "-" : text.trim());
         }
 
-        userStates.put(chatId, "WIZARD_ENGINE_" + State.ASK_CONTACT);
-        // БЫЛО: aaskInline(..., ReplyKeyboards.requestContact(...))  <-- опечатка + неверный метод
-        // СТАЛО:
-        ask(chatId, messages.getString("wizard.engine.ask_contact"),
-                ReplyKeyboards.requestContact(messages)); // это REPLY-клавиатура "Отправить номер"
+   userStates.put(chatId, "WIZARD_ENGINE_" + State.ASK_CONTACT);
+ask(chatId, messages.getString("wizard.engine.ask_contact"),
+    ReplyKeyboards.requestContact(messages));
+
+
     }
 
 
@@ -397,9 +397,15 @@ public class NewEngineOrderWizard {
 // 2) Закрываем старое сообщение (plain)
                 editMessagePlain(chatId, messageId,
                         "Спасибо! Ваша заявка принята за номером " + publicId + ". Мы свяжемся с вами в ближайшее время.");
+// Скрыть reply-клавиатуру и поблагодарить
+SendMessage done = new SendMessage();
+done.setChatId(chatId);
+done.setText(messages.getString("wizard.engine.done.thanks")); // добавь ключ в i18n
+done.setReplyMarkup(ReplyKeyboards.hide()); // отправит ReplyKeyboardRemove
+try { sender.execute(done); } catch (TelegramApiException ignored) {}
 
 // 3) Новое сообщение с главным меню — ТЕПЕРЬ не welcome, а наш пост-заявочный текст
-                sendMenuAfterFlow(chatId, buildPostSubmitMessage(publicId), messages);
+               askPlain(chatId, buildPostSubmitMessage(publicId));
 
 
                 // 4) Уведомляем OPS
