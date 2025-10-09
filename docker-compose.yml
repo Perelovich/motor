@@ -1,20 +1,22 @@
 services:
- db:
+ services:
+  db:
     image: postgres:15
     container_name: icars_db
     environment:
       POSTGRES_DB: icars
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - icars_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d icars"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]  # <— тут postgres
       interval: 5s
       timeout: 5s
       retries: 10
+    volumes:
+      - icars_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
 
   app:
     build: .
