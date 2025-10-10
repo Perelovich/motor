@@ -377,60 +377,60 @@ public class NewEngineOrderWizard {
         order.setCustomerPhone(phone);
 
         userStates.put(chatId, "WIZARD_ENGINE_" + State.PREVIEW);
+        // СПРЯТАТЬ reply-клавиатуру "Отправить номер"
+sendHideKeyboard(chatId, messages.getString("wizard.engine.contact_ok")); 
+// напр. добавь в i18n: wizard.engine.contact_ok=✅ Контакт получен
         showPreview(chatId, messages);
     }
 
     private void processPreview(Update update, ResourceBundle messages) {
-        if (!update.hasCallbackQuery()) return;
+if ("confirm".equals(data)) {
+    Order order = ordersInProgress.get(chatId);
+    EngineAttributes attrs = attributesInProgress.get(chatId);
 
-        long chatId   = update.getCallbackQuery().getMessage().getChatId();
-        int messageId = update.getCallbackQuery().getMessage().getMessageId();
-        String data   = update.getCallbackQuery().getData();
+    try {
+        String publicId = orderService.createOrder(order, attrs);
 
-        if ("confirm".equals(data)) {
-            Order order = ordersInProgress.get(chatId);
-            EngineAttributes attrs = attributesInProgress.get(chatId);
+        // 1) Чистим состояние
+        userStates.remove(chatId);
+        ordersInProgress.remove(chatId);
+        attributesInProgress.remove(chatId);
 
-            try {
-                String publicId = orderService.createOrder(order, attrs);
+        // 2) Закрываем старое превью (редактируем то сообщение с инлайном)
+        editMessagePlain(
+                chatId,
+                messageId,
+                "Спасибо! Ваша заявка принята за номером " + publicId + ". Мы свяжемся с вами в ближайшее время."
+        );
 
-                // 1) Чистим состояние
-                userStates.remove(chatId);
-                ordersInProgress.remove(chatId);
-                attributesInProgress.remove(chatId);
+        // 3) На всякий случай — в отдельном сообщении убираем reply-клаву (если где-то осталась)
+        sendHideKeyboard(chatId, messages.getString("wizard.engine.done.thanks"));
 
-                // 2) Закрываем превью и говорим спасибо (plain)
-                editMessagePlain(chatId, messageId,
-                        messages.getString("wizard.engine.done.thanks"));
+        // 4) Новое сообщение с пост-информацией + ГЛАВНОЕ МЕНЮ (reply-клава)
+        SendMessage menu = new SendMessage();
+        menu.setChatId(chatId);
+        menu.setText(buildPostSubmitMessage(publicId));
+        menu.setReplyMarkup(ReplyKeyboards.mainMenu(messages));
+        sender.execute(menu);
 
-                // 3) Новое сообщение с пост-текстом + инлайн “Вернуться в меню”
-                SendMessage m = new SendMessage();
-                m.setChatId(chatId);
-                m.setText(buildPostSubmitMessage(publicId));
-                m.setReplyMarkup(InlineKeyboards.backToMenu(messages)); // <— см. добавление в InlineKeyboards
-                sender.execute(m);
+        // 5) Уведомляем OPS
+        Order fullOrder = orderService.findByPublicId(publicId).orElseThrow();
+        notificationService.notifyNewOrder(fullOrder, attrs);
 
-                // 4) Уведомляем OPS
-                Order fullOrder = orderService.findByPublicId(publicId).orElseThrow();
-                notificationService.notifyNewOrder(fullOrder, attrs);
+    } catch (Exception e) {
+        logger.error("Failed to save order for chat {}", chatId, e);
+        editMessagePlain(chatId, messageId, messages.getString("validation.error.general"));
 
-            } catch (Exception e) {
-                logger.error("Failed to save order for chat {}", chatId, e);
-                editMessagePlain(chatId, messageId, messages.getString("validation.error.general"));
-                // показываем обычное меню
-                sendMenuAfterFlow(chatId, messages.getString("welcome"), messages);
-            }
-
-        } else if ("cancel".equals(data)) {
-            userStates.remove(chatId);
-            ordersInProgress.remove(chatId);
-            attributesInProgress.remove(chatId);
-
-            editMessagePlain(chatId, messageId, messages.getString("wizard.engine.cancelled"));
-            sendMenuAfterFlow(chatId,
-                    messages.getString("wizard.engine.cancelled.next"),
-                    messages);
-        }
+        // Спрячем клаву и вернём юзера в меню
+        sendHideKeyboard(chatId, null);
+        SendMessage fallback = new SendMessage();
+        fallback.setChatId(chatId);
+        fallback.setText(messages.getString("welcome"));
+        fallback.setReplyMarkup(ReplyKeyboards.mainMenu(messages));
+        try { sender.execute(fallback); } catch (TelegramApiException ignored) {}
+    }
+    return;
+}
     }
 
     /* ======================== VIEW helpers ======================== */
@@ -555,4 +555,18 @@ public class NewEngineOrderWizard {
         ordersInProgress.remove(chatId);
         attributesInProgress.remove(chatId);
     }
+    
+// Спрятать любую reply-клавиатуру отдельным сообщением
+private void sendHideKeyboard(long chatId, String text) {
+    SendMessage hide = new SendMessage();
+    hide.setChatId(chatId);
+    hide.setText(text == null ? "" : text);
+    hide.setReplyMarkup(ReplyKeyboards.hide());
+    try {
+        sender.execute(hide);
+    } catch (TelegramApiException e) {
+        logger.warn("Failed to hide reply keyboard in chat {}", chatId, e);
+    }
+}
+
 }
