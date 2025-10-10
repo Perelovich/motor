@@ -7,27 +7,25 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]  # <— тут postgres
+      test: ["CMD-SHELL", "pg_isready -U postgres -d icars"]
       interval: 5s
       timeout: 5s
       retries: 10
-    volumes:
-      - icars_pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-
+    volumes:
+      - icars_pgdata:/var/lib/postgresql/data
 
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: motor-app
     container_name: icars_bot
     depends_on:
       db:
         condition: service_healthy
-    env_file: .env
     environment:
-      # внутри контейнера база доступна по хосту "db"
       DB_URL: jdbc:postgresql://db:5432/icars
-    restart: unless-stopped
-
-volumes:
-  icars_pgdata:
+      DB_USER: postgres
+      DB_PASS: postgres
