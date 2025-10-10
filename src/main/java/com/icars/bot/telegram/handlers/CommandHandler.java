@@ -26,24 +26,33 @@ public class CommandHandler {
         this.sender = sender;
     }
 
-    public void handleStart(Update update) {
-        long chatId = update.getMessage().getChatId();
-
-        // Локаль по-умолчанию RU. Если хочешь детектить язык — достань его из update.getMessage().getFrom().getLanguageCode()
-        Locale locale = I18n.resolve(null, "ru");
-        ResourceBundle messages = ResourceBundle.getBundle("i18n.messages", locale, new I18n.UTF8Control());
-
-        SendMessage message = new SendMessage();
-        message.setChatId(chatId);
-        message.setText(messages.getString("welcome"));
-        message.setReplyMarkup(ReplyKeyboards.mainMenu(messages)); // показать главное меню
-
-        try {
-            sender.execute(message);
-        } catch (TelegramApiException e) {
-            logger.error("Failed to send start message to chat {}", chatId, e);
-        }
+public void handleStart(Update update) {
+    Long chatId = null;
+    if (update.hasMessage() && update.getMessage() != null) {
+        chatId = update.getMessage().getChatId();
+    } else if (update.hasCallbackQuery() && update.getCallbackQuery().getMessage() != null) {
+        chatId = update.getCallbackQuery().getMessage().getChatId();
+    } else if (update.hasMyChatMember() && update.getMyChatMember().getChat() != null) {
+        chatId = update.getMyChatMember().getChat().getId();
+    } else if (update.hasChatJoinRequest() && update.getChatJoinRequest().getChat() != null) {
+        chatId = update.getChatJoinRequest().getChat().getId();
     }
+    if (chatId == null) {
+        // нечего делать — безопасно выходим
+        return;
+    }
+
+    SendMessage sm = new SendMessage();
+    sm.setChatId(chatId);
+    sm.setText(messages.getString("welcome")); // как у тебя было
+    sm.setReplyMarkup(ReplyKeyboards.mainMenu(messages));
+    try {
+        sender.execute(sm);
+    } catch (TelegramApiException e) {
+        logger.error("Failed to send /start welcome", e);
+    }
+}
+
 
     public void handleUnknown(Update update) {
         long chatId = update.getMessage().getChatId();
