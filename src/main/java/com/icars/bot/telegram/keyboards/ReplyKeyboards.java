@@ -44,7 +44,10 @@ public class ReplyKeyboards {
         return keyboardMarkup;
     }
 
-    public static ReplyKeyboardRemove hide() {
-        return new ReplyKeyboardRemove(true);
-    }
+public static ReplyKeyboardRemove hide() {
+    ReplyKeyboardRemove rm = new ReplyKeyboardRemove();
+    rm.setRemoveKeyboard(true);
+    rm.setSelective(false); // важно: false, чтобы убрать для всех
+    return rm;
+}
 }
