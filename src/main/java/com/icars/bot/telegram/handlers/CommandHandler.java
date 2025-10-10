@@ -1,7 +1,6 @@
 package com.icars.bot.telegram.handlers;
 
 import com.icars.bot.telegram.keyboards.ReplyKeyboards;
-// если пользуешься своим UTF-8 контролом:
 import com.icars.bot.i18n.I18n;
 
 import org.slf4j.Logger;
@@ -15,7 +14,6 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.ResourceBundle;
 
 public class CommandHandler {
@@ -26,44 +24,65 @@ public class CommandHandler {
         this.sender = sender;
     }
 
-public void handleStart(Update update) {
-    Long chatId = null;
-    if (update.hasMessage() && update.getMessage() != null) {
-        chatId = update.getMessage().getChatId();
-    } else if (update.hasCallbackQuery() && update.getCallbackQuery().getMessage() != null) {
-        chatId = update.getCallbackQuery().getMessage().getChatId();
-    } else if (update.hasMyChatMember() && update.getMyChatMember().getChat() != null) {
-        chatId = update.getMyChatMember().getChat().getId();
-    } else if (update.hasChatJoinRequest() && update.getChatJoinRequest().getChat() != null) {
-        chatId = update.getChatJoinRequest().getChat().getId();
-    }
-    if (chatId == null) {
-        // нечего делать — безопасно выходим
-        return;
+    /** Универсально достаём chatId из любого типа апдейта */
+    private Long extractChatId(Update update) {
+        if (update == null) return null;
+        if (update.hasMessage() && update.getMessage() != null) {
+            return update.getMessage().getChatId();
+        }
+        if (update.hasCallbackQuery() && update.getCallbackQuery().getMessage() != null) {
+            return update.getCallbackQuery().getMessage().getChatId();
+        }
+        if (update.hasMyChatMember() && update.getMyChatMember().getChat() != null) {
+            return update.getMyChatMember().getChat().getId();
+        }
+        if (update.hasChatJoinRequest() && update.getChatJoinRequest().getChat() != null) {
+            return update.getChatJoinRequest().getChat().getId();
+        }
+        return null;
     }
 
-    SendMessage sm = new SendMessage();
-    sm.setChatId(chatId);
-    sm.setText(messages.getString("welcome")); // как у тебя было
-    sm.setReplyMarkup(ReplyKeyboards.mainMenu(messages));
-    try {
-        sender.execute(sm);
-    } catch (TelegramApiException e) {
-        logger.error("Failed to send /start welcome", e);
+    /** Берём i18n bundle по языку пользователя, по умолчанию ru */
+    private ResourceBundle getMessages(Update update) {
+        String lang = "ru";
+        var user = update != null
+                ? (update.hasCallbackQuery()
+                    ? update.getCallbackQuery().getFrom()
+                    : (update.getMessage() != null ? update.getMessage().getFrom() : null))
+                : null;
+        if (user != null && user.getLanguageCode() != null && user.getLanguageCode().startsWith("en")) {
+            lang = "en";
+        }
+        return ResourceBundle.getBundle("i18n.messages", I18n.resolve(null, lang), new I18n.UTF8Control());
     }
-}
 
+    public void handleStart(Update update) {
+        Long chatId = extractChatId(update);
+        if (chatId == null) return;
+
+        ResourceBundle messages = getMessages(update);
+
+        SendMessage sm = new SendMessage();
+        sm.setChatId(chatId);
+        sm.setText(messages.getString("welcome"));
+        sm.setReplyMarkup(ReplyKeyboards.mainMenu(messages));
+        try {
+            sender.execute(sm);
+        } catch (TelegramApiException e) {
+            logger.error("Failed to send /start welcome", e);
+        }
+    }
 
     public void handleUnknown(Update update) {
-        long chatId = update.getMessage().getChatId();
+        Long chatId = extractChatId(update);
+        if (chatId == null) return;
 
-        // Можно без бандла, просто покажем текст и снова главное меню:
+        ResourceBundle messages = getMessages(update);
+
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
         message.setText("Неизвестная команда. Используйте меню ниже.");
-        message.setReplyMarkup(ReplyKeyboards.mainMenu(
-                ResourceBundle.getBundle("i18n.messages", I18n.resolve(null, "ru"), new I18n.UTF8Control())
-        ));
+        message.setReplyMarkup(ReplyKeyboards.mainMenu(messages));
 
         try {
             sender.execute(message);
@@ -72,19 +91,9 @@ public void handleStart(Update update) {
         }
     }
 
-    public java.util.ResourceBundle getMessages(org.telegram.telegrambots.meta.api.objects.Update update) {
-    String lang = "ru";
-    var user = update.hasCallbackQuery()
-            ? update.getCallbackQuery().getFrom()
-            : (update.getMessage() != null ? update.getMessage().getFrom() : null);
-    if (user != null && user.getLanguageCode() != null && user.getLanguageCode().startsWith("en")) {
-        lang = "en";
-    }
-    return java.util.ResourceBundle.getBundle("i18n.messages", java.util.Locale.forLanguageTag(lang));
-}
-
     public void handleFaq(Update update) {
-        long chatId = update.getMessage().getChatId();
+        Long chatId = extractChatId(update);
+        if (chatId == null) return;
 
         String text = """
 i CARS PRO — основной канал (с 2019):
@@ -117,7 +126,7 @@ iCars Engine — двигатели в наличии и под заказ.
         sm.setReplyMarkup(ik);
 
         try {
-            sender.execute(sm); // <-- ИСПОЛЬЗУЕМ sender, а не bot
+            sender.execute(sm);
         } catch (TelegramApiException e) {
             logger.error("Failed to send FAQ message to chat {}", chatId, e);
         }
