@@ -1,7 +1,7 @@
 package com.icars.bot.telegram.handlers;
 
 import com.icars.bot.telegram.keyboards.ReplyKeyboards;
-import com.icars.bot.i18n.I18n;
+import com.icars.bot.i18n.I18n; // если нет такого класса — убери и используй ResourceBundle как ниже
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,25 +24,29 @@ public class CommandHandler {
         this.sender = sender;
     }
 
-    /** Универсально достаём chatId из любого типа апдейта */
-    private Long extractChatId(Update update) {
-        if (update == null) return null;
-        if (update.hasMessage() && update.getMessage() != null) {
-            return update.getMessage().getChatId();
+    /** Безопасно достаём chatId из разных типов апдейтов */
+    private Long extractChatId(Update u) {
+        if (u == null) return null;
+        if (u.hasMessage() && u.getMessage() != null) {
+            return u.getMessage().getChatId();
         }
-        if (update.hasCallbackQuery() && update.getCallbackQuery().getMessage() != null) {
-            return update.getCallbackQuery().getMessage().getChatId();
+        if (u.hasCallbackQuery() && u.getCallbackQuery().getMessage() != null) {
+            return u.getCallbackQuery().getMessage().getChatId();
         }
-        if (update.hasMyChatMember() && update.getMyChatMember().getChat() != null) {
-            return update.getMyChatMember().getChat().getId();
+        if (u.hasMyChatMember() && u.getMyChatMember().getChat() != null) {
+            return u.getMyChatMember().getChat().getId();
         }
-        if (update.hasChatJoinRequest() && update.getChatJoinRequest().getChat() != null) {
-            return update.getChatJoinRequest().getChat().getId();
+        if (u.hasChatJoinRequest() && u.getChatJoinRequest().getChat() != null) {
+            return u.getChatJoinRequest().getChat().getId();
+        }
+        // на всякий
+        if (u.hasChannelPost() && u.getChannelPost() != null) {
+            return u.getChannelPost().getChatId();
         }
         return null;
     }
 
-    /** Берём i18n bundle по языку пользователя, по умолчанию ru */
+    /** Определяем язык и берём Bundle */
     private ResourceBundle getMessages(Update update) {
         String lang = "ru";
         var user = update != null
@@ -53,13 +57,15 @@ public class CommandHandler {
         if (user != null && user.getLanguageCode() != null && user.getLanguageCode().startsWith("en")) {
             lang = "en";
         }
-        return ResourceBundle.getBundle("i18n.messages", I18n.resolve(null, lang), new I18n.UTF8Control());
+        return ResourceBundle.getBundle("i18n.messages", java.util.Locale.forLanguageTag(lang));
     }
 
     public void handleStart(Update update) {
         Long chatId = extractChatId(update);
-        if (chatId == null) return;
-
+        if (chatId == null) {
+            logger.warn("/start: chatId is null for update {}", update != null ? update.getUpdateId() : null);
+            return;
+        }
         ResourceBundle messages = getMessages(update);
 
         SendMessage sm = new SendMessage();
@@ -77,11 +83,13 @@ public class CommandHandler {
         Long chatId = extractChatId(update);
         if (chatId == null) return;
 
+        // Покажем текст и снова главное меню:
         ResourceBundle messages = getMessages(update);
-
         SendMessage message = new SendMessage();
         message.setChatId(chatId);
-        message.setText("Неизвестная команда. Используйте меню ниже.");
+        message.setText(messages.containsKey("unknown.command")
+                ? messages.getString("unknown.command")
+                : "Неизвестная команда. Используйте меню ниже.");
         message.setReplyMarkup(ReplyKeyboards.mainMenu(messages));
 
         try {
