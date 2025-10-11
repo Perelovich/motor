@@ -1,31 +1,49 @@
+version: "3.9"
+
 services:
-  db:
-    image: postgres:15
-    container_name: icars_db
+  postgres:
+    image: postgres:16-alpine
+    container_name: icars-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: icars
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d icars"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
     ports:
       - "5432:5432"
     volumes:
-      - icars_pgdata:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   app:
+    # Если у вас есть Dockerfile в корне проекта (Java/Kotlin/Spring и т.п.)
     build:
       context: .
       dockerfile: Dockerfile
-    image: motor-app
-    container_name: icars_bot
-    depends_on:
-      db:
-        condition: service_healthy
+    # Или используйте готовый образ, если он есть:
+    # image: your-registry/icars-bot:latest
+    container_name: icars-bot
+    restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      DB_URL: jdbc:postgresql://db:5432/icars
-      DB_USER: postgres
-      DB_PASS: postgres
+      # Внутри compose-сети база доступна по имени сервиса "postgres",
+      # поэтому ПЕРЕОПРЕДЕЛЯЕМ DB_URL, чтобы не использовать localhost:
+      DB_URL: jdbc:postgresql://postgres:5432/icars
+      # На всякий случай продублируем таймзону внутри контейнера:
+      TZ: Europe/Bucharest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Если вашему приложению нужен доступ к локал-логу или файлам — раскомментируйте:
+    # volumes:
+    #   - ./logs:/app/logs
+    # ports:
+    #   - "8080:8080"  # если есть HTTP-эндпойнт
+
+volumes:
+  pg_data:
