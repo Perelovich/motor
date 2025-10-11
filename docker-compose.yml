@@ -1,35 +1,35 @@
 version: "3.9"
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: icars-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: icars
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - pg_data:/var/lib/postgresql/data
+postgres:
+image: postgres:16-alpine
+container_name: icars-postgres
+restart: unless-stopped
+environment:
+POSTGRES_DB: icars
+POSTGRES_USER: postgres
+POSTGRES_PASSWORD: postgres
+ports:
+- "5432:5432"
+volumes:
+- pg_data:/var/lib/postgresql/data
 
-  app:
-    # Если есть Dockerfile в корне — оставляем build:. Иначе замените на image: your-registry/icars-bot:latest
-    build: .
-    container_name: icars-bot
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      # Переопределяем URL на адрес сервиса БД внутри сети compose
-      DB_URL: jdbc:postgresql://postgres:5432/icars
-      TZ: Europe/Bucharest
-    depends_on:
-      - postgres
-    # Раскомментируйте при необходимости web-порта:
-    # ports:
-    #   - "8080:8080"
+app:
+# Если есть Dockerfile в корне — оставляем build:. Иначе замените на image: your-registry/icars-bot:latest
+build: .
+container_name: icars-bot
+restart: unless-stopped
+env_file:
+- .env
+environment:
+# Переопределяем URL на адрес сервиса БД внутри сети compose
+DB_URL: jdbc:postgresql://postgres:5432/icars
+TZ: Europe/Bucharest
+depends_on:
+- postgres
+# Раскомментируйте при необходимости web-порта:
+# ports:
+#   - "8080:8080"
 
 volumes:
-  pg_data:
+pg_data:
