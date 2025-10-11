@@ -1,4 +1,4 @@
-services: 
+services:
 postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -10,7 +10,7 @@ postgres:
       - pg_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-  app:
+      app:
     build: .
     restart: unless-stopped
     env_file:
